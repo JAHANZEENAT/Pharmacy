@@ -53,14 +53,19 @@ A comprehensive Online Pharmacy Management System with strictly separated authen
 - `/customer/login` - Customer login page with Google OAuth option
 - `/customer/register` - Customer registration with full details
 
-#### Operator Auth (Email/Password ONLY - Shared Registration)
-- `/operator/register` - Combined registration for Pharmacists & Delivery Boys
-  - Role selection (Pharmacist or Delivery Boy)
-  - Document upload requirement:
-    - **Pharmacists:** Government-issued pharmacy license
-    - **Delivery Boys:** 18+ identity proof (Aadhaar/PAN)
+#### Pharmacist Auth (Email/Password ONLY)
+- `/pharmacy/register` - Dedicated registration for Pharmacists
+  - Requirement: Government-issued pharmacy license
   - Account created with `verification_status = pending`
   - Login blocked until admin approval
+
+#### Delivery Partner Auth (Email/Password ONLY)
+- `/delivery/register` - Dedicated registration for Delivery Partners
+  - Requirement: 18+ identity proof (Aadhaar/PAN)
+  - Account created with `verification_status = pending`
+  - Login blocked until admin approval
+
+#### Shared Operator Login
 - `/operator/login` - Operator login (shows pending message if not approved)
 
 #### Admin Auth (Email/Password ONLY - No Public Signup)

@@ -32,9 +32,14 @@ export default function CustomerLogin() {
       const data = await response.json()
 
       if (data.success) {
+        console.log('[LOGIN] Customer login success, redirecting...')
         login(data.token, data.user)
         toast.success('Login successful!')
-        router.push('/customer/shop')
+
+        setTimeout(() => {
+          // Force a hard navigation to avoid router state issues
+          window.location.href = '/customer/shop'
+        }, 100)
       } else {
         toast.error(data.error || 'Login failed')
       }

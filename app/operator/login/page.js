@@ -23,8 +23,15 @@ function OperatorLoginContent() {
 
   const handleLogin = async (e) => {
     e.preventDefault()
+
+    if (!email || !password) {
+      window.alert('Please fill in all fields')
+      return
+    }
+
     setLoading(true)
 
+    console.log('[LOGIN] Operator login attempt started')
     try {
       const response = await fetch('/api/auth/operator/login', {
         method: 'POST',
@@ -32,18 +39,25 @@ function OperatorLoginContent() {
         body: JSON.stringify({ email, password })
       })
 
+      console.log(`[LOGIN] Operator API responded: ${response.status}`)
       const data = await response.json()
+      console.log('[LOGIN] Operator data parsed:', data.success ? 'Success' : 'Failed')
 
       if (data.success) {
+        console.log('[LOGIN] Success! Storing session and redirecting...')
         login(data.token, data.user)
         toast.success('Login successful!')
 
-        // Redirect based on role
-        if (data.user.role === 'pharmacist') {
-          router.push('/pharmacist/dashboard')
-        } else if (data.user.role === 'delivery_boy') {
-          router.push('/delivery/dashboard')
-        }
+        setTimeout(() => {
+          // Redirect based on role
+          if (data.user.role === 'pharmacist') {
+            console.log('[LOGIN] Navigating to pharmacist dashboard...')
+            window.location.href = '/pharmacist/dashboard'
+          } else if (data.user.role === 'delivery_boy') {
+            console.log('[LOGIN] Navigating to delivery dashboard...')
+            window.location.href = '/delivery/dashboard'
+          }
+        }, 100)
       } else {
         if (data.status === 'pending') {
           toast.warning(data.error)
@@ -131,9 +145,14 @@ function OperatorLoginContent() {
             </Alert>
 
             <div className="mt-6 text-center text-sm">
-              <span className="text-gray-600">Don't have an account? </span>
-              <Link href="/operator/register" className="text-purple-600 hover:underline font-medium">
-                Register here
+              <span className="text-gray-600">Are you a pharmacy? </span>
+              <Link href="/pharmacy/register" className="text-purple-600 hover:underline font-bold">
+                Register Pharmacy here
+              </Link>
+            </div>
+            <div className="mt-2 text-center text-xs">
+              <Link href="/delivery/register" className="text-slate-400 hover:text-slate-600">
+                Delivery partner? Join here
               </Link>
             </div>
           </CardContent>

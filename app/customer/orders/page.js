@@ -11,18 +11,20 @@ import { Shield, Package, Clock, CheckCircle, XCircle, Truck, ArrowLeft } from '
 import { format } from 'date-fns'
 
 export default function CustomerOrders() {
-  const { user, getToken } = useAuth()
+  const { user, getToken, loading: authLoading } = useAuth()
   const [orders, setOrders] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [dataLoading, setDataLoading] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
+    if (authLoading) return
+
     if (!user || user.role !== 'customer') {
       router.push('/customer/login')
       return
     }
     fetchOrders()
-  }, [user, router])
+  }, [user, authLoading, router])
 
   const fetchOrders = async () => {
     try {
@@ -35,7 +37,7 @@ export default function CustomerOrders() {
     } catch (error) {
       console.error('Failed to fetch orders:', error)
     } finally {
-      setLoading(false)
+      setDataLoading(false)
     }
   }
 
@@ -96,7 +98,7 @@ export default function CustomerOrders() {
           <p className="text-gray-600">Track and manage your medicine orders</p>
         </div>
 
-        {loading ? (
+        {dataLoading ? (
           <div className="text-center py-12">
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
             <p className="mt-4 text-gray-600">Loading orders...</p>

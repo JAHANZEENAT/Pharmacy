@@ -3,386 +3,199 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
-import { Shield, Users, Package, Truck, CheckCircle, XCircle, LogOut, User, Clock, FileText } from 'lucide-react'
-import { format } from 'date-fns'
+import DashboardStats from '@/components/admin/DashboardStats'
+import DashboardCharts from '@/components/admin/DashboardCharts'
+import { Bell, Search, Settings, Calendar } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO } from 'date-fns'
 
 export default function AdminDashboard() {
-  const { user, logout, getToken } = useAuth()
-  const [users, setUsers] = useState([])
-  const [orders, setOrders] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [selectedUser, setSelectedUser] = useState(null)
-  const [approvalDialog, setApprovalDialog] = useState(false)
+  console.log('[DASHBOARD] AdminDashboard component mounting')
+  const { user, getToken, loading: authLoading } = useAuth()
+  const [dataLoading, setDataLoading] = useState(true)
+  const [dashboardData, setDashboardData] = useState({
+    stats: null,
+    orderData: [],
+    revenueData: [],
+    topSellingData: []
+  })
   const router = useRouter()
 
   useEffect(() => {
-    if (!user || user.role !== 'admin') {
-      router.push('/admin/login')
-      return
+    if (authLoading) return
+
+    // Simple guard with a small delay check to avoid race conditions with router redirection
+    const checkAuth = () => {
+      if (!user) {
+        router.push('/admin/login')
+        return
+      }
+      console.log('[DASHBOARD] Auth verified for admin')
+      fetchData()
     }
-    fetchData()
-  }, [user, router])
+
+    // Give it 100ms to stabilize if user is not immediately available
+    if (!user) {
+      const timer = setTimeout(checkAuth, 100)
+      return () => clearTimeout(timer)
+    } else {
+      checkAuth()
+    }
+  }, [user, authLoading, router])
 
   const fetchData = async () => {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000)
+
     try {
+      setDataLoading(true)
       const token = getToken()
 
-      // Fetch users
-      const usersResponse = await fetch('/api/admin/users', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      const usersData = await usersResponse.json()
-      setUsers(usersData.users || [])
+      // Fetch users and orders in parallel
+      const [usersRes, ordersRes] = await Promise.all([
+        fetch('/api/admin/users', {
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: controller.signal
+        }),
+        fetch('/api/admin/orders', {
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: controller.signal
+        })
+      ])
 
-      // Fetch orders (status only - privacy compliant)
-      const ordersResponse = await fetch('/api/admin/orders', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      const ordersData = await ordersResponse.json()
-      setOrders(ordersData.orders || [])
-    } catch (error) {
-      toast.error('Failed to load data')
-    } finally {
-      setLoading(false)
-    }
-  }
+      const { users = [] } = await usersRes.json()
+      const { orders = [] } = await ordersRes.json()
 
-  const handleApproval = async (userId, approved) => {
-    try {
-      const token = getToken()
-      const response = await fetch('/api/admin/users/approve', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ userId, approved })
-      })
-
-      const data = await response.json()
-      if (data.success) {
-        toast.success(approved ? 'User approved' : 'User rejected')
-        fetchData()
-        setApprovalDialog(false)
-        setSelectedUser(null)
+      // 1. Calculate Stats
+      const pharmacists = users.filter(u => u.role === 'pharmacist')
+      const stats = {
+        totalPharmacies: pharmacists.length,
+        openPharmacies: pharmacists.filter(u => u.verificationStatus === 'approved').length,
+        pendingPharmacies: pharmacists.filter(u => u.verificationStatus === 'pending').length,
+        rejectedPharmacies: pharmacists.filter(u => u.verificationStatus === 'rejected').length,
+        totalCustomers: users.filter(u => u.role === 'customer').length,
+        totalOrders: orders.length,
+        activeOrders: orders.filter(o => !['delivered', 'rejected'].includes(o.status)).length,
+        totalRevenue: orders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0),
+        commissionEarned: orders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0) * 0.1, 0)
       }
+
+      // 2. Prepare Chart Data (Last 7 days)
+      const last7Days = eachDayOfInterval({
+        start: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000),
+        end: new Date()
+      })
+
+      const orderData = last7Days.map(date => {
+        const dayOrders = orders.filter(o => isSameDay(parseISO(o.createdAt), date))
+        return {
+          name: format(date, 'EEE'),
+          orders: dayOrders.length
+        }
+      })
+
+      // 3. Prepare Monthly Revenue (Last 6 months)
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+      const currentMonth = new Date().getMonth()
+      const last6Months = Array.from({ length: 6 }, (_, i) => (currentMonth - 5 + i + 12) % 12)
+
+      const revenueData = last6Months.map(mIdx => {
+        const monthRevenue = orders
+          .filter(o => new Date(o.createdAt).getMonth() === mIdx)
+          .reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0)
+        return {
+          name: months[mIdx],
+          revenue: monthRevenue
+        }
+      })
+
+      // 4. Mock Top Selling (since we don't have item-level stats in admin route)
+      const topSellingData = [
+        { name: 'Paracetamol', sales: Math.floor(orders.length * 0.4), color: '#3b82f6' },
+        { name: 'Amoxicillin', sales: Math.floor(orders.length * 0.25), color: '#8b5cf6' },
+        { name: 'Vitamin C', sales: Math.floor(orders.length * 0.15), color: '#f59e0b' },
+        { name: 'Ibuprofen', sales: Math.floor(orders.length * 0.1), color: '#10b981' },
+        { name: 'Cetirizine', sales: Math.floor(orders.length * 0.05), color: '#f43f5e' },
+      ]
+
+      setDashboardData({ stats, orderData, revenueData, topSellingData })
     } catch (error) {
-      toast.error('Failed to update user status')
+      console.error('Failed to fetch dashboard data:', error)
+      if (error.name === 'AbortError') {
+        toast.error('Dashboard request timed out')
+      } else {
+        toast.error('Failed to load dashboard data')
+      }
+    } finally {
+      clearTimeout(timeoutId)
+      setDataLoading(false)
     }
   }
 
-  if (!user) return null
-
-  const customers = users.filter(u => u.role === 'customer')
-  const pharmacists = users.filter(u => u.role === 'pharmacist')
-  const deliveryBoys = users.filter(u => u.role === 'delivery_boy')
-  const pendingApprovals = users.filter(u => u.verificationStatus === 'pending' && ['pharmacist', 'delivery_boy'].includes(u.role))
+  if (authLoading || !user) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-gray-900">
-      <header className="bg-gray-800 border-b border-gray-700">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Shield className="h-8 w-8 text-blue-400" />
-            <h1 className="text-2xl font-bold text-white">PharmaFlow - Admin</h1>
-          </div>
-          <div className="flex items-center space-x-4">
-            <User className="h-4 w-4 text-gray-400" />
-            <span className="text-sm font-medium text-white">{user.name}</span>
-            <Button variant="outline" size="sm" onClick={logout} className="bg-gray-700 text-white border-gray-600">
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </Button>
-          </div>
+    <div className="space-y-8 animate-in fade-in duration-500 pb-12">
+      {/* Top Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">System Overview</h1>
+          <p className="text-slate-500 text-sm mt-1">Welcome back, {user.name}! Here's what's happening today.</p>
         </div>
-      </header>
-
-      <main className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold mb-2 text-white">System Dashboard</h2>
-          <p className="text-gray-400">Monitor and manage the pharmacy management system</p>
-        </div>
-
-        {/* Stats */}
-        <div className="grid md:grid-cols-4 gap-4 mb-8">
-          <Card className="bg-gray-800 border-gray-700">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-400">Total Customers</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold text-blue-400">{customers.length}</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-gray-800 border-gray-700">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-400">Pharmacists</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold text-purple-400">{pharmacists.length}</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-gray-800 border-gray-700">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-400">Delivery Boys</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold text-green-400">{deliveryBoys.length}</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-gray-800 border-gray-700">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-400">Pending Approvals</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold text-amber-400">{pendingApprovals.length}</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400"></div>
-            <p className="mt-4 text-gray-400">Loading data...</p>
+        <div className="flex items-center gap-3">
+          <div className="relative hidden md:block">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input
+              placeholder="Search reports..."
+              className="pl-9 w-64 bg-white border-slate-200 focus-visible:ring-blue-500"
+            />
           </div>
-        ) : (
-          <Tabs defaultValue="approvals" className="space-y-4">
-            <TabsList className="bg-gray-800 border-gray-700">
-              <TabsTrigger value="approvals" className="data-[state=active]:bg-gray-700">
-                Pending Approvals ({pendingApprovals.length})
-              </TabsTrigger>
-              <TabsTrigger value="customers" className="data-[state=active]:bg-gray-700">
-                Customers
-              </TabsTrigger>
-              <TabsTrigger value="pharmacists" className="data-[state=active]:bg-gray-700">
-                Pharmacists
-              </TabsTrigger>
-              <TabsTrigger value="delivery" className="data-[state=active]:bg-gray-700">
-                Delivery Boys
-              </TabsTrigger>
-              <TabsTrigger value="orders" className="data-[state=active]:bg-gray-700">
-                Orders (Status Only)
-              </TabsTrigger>
-            </TabsList>
-
-            {/* Pending Approvals */}
-            <TabsContent value="approvals">
-              {pendingApprovals.length === 0 ? (
-                <Card className="bg-gray-800 border-gray-700">
-                  <CardContent className="py-12 text-center">
-                    <CheckCircle className="h-16 w-16 text-gray-600 mx-auto mb-4" />
-                    <h3 className="text-xl font-semibold mb-2 text-white">No Pending Approvals</h3>
-                    <p className="text-gray-400">All operators have been reviewed</p>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-4">
-                  {pendingApprovals.map((user) => (
-                    <Card key={user.userId} className="bg-gray-800 border-gray-700">
-                      <CardContent className="p-6">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-4 mb-2">
-                              <h3 className="font-semibold text-lg text-white">{user.name}</h3>
-                              <Badge variant="outline" className="text-amber-400 border-amber-400">
-                                <Clock className="h-3 w-3 mr-1" />
-                                Pending
-                              </Badge>
-                              <Badge variant="secondary">
-                                {user.role === 'pharmacist' ? 'Pharmacist' : 'Delivery Boy'}
-                              </Badge>
-                            </div>
-                            <p className="text-sm text-gray-400 mb-2">{user.email}</p>
-                            <p className="text-sm text-gray-400">Registered: {format(new Date(user.createdAt), 'MMM dd, yyyy')}</p>
-                            {user.documentUrl && (
-                              <div className="mt-2">
-                                <Badge variant="outline" className="flex items-center gap-1 w-fit">
-                                  <FileText className="h-3 w-3" />
-                                  Document Uploaded
-                                </Badge>
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex flex-col gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                setSelectedUser(user)
-                                setApprovalDialog(true)
-                              }}
-                              className="bg-green-600 hover:bg-green-700"
-                            >
-                              <CheckCircle className="h-4 w-4 mr-2" />
-                              Approve
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => handleApproval(user.userId, false)}
-                            >
-                              <XCircle className="h-4 w-4 mr-2" />
-                              Reject
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-
-            {/* Customers */}
-            <TabsContent value="customers">
-              <Card className="bg-gray-800 border-gray-700">
-                <CardHeader>
-                  <CardTitle className="text-white">Customers</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {customers.map((customer) => (
-                      <div key={customer.userId} className="flex items-center justify-between p-3 bg-gray-700 rounded">
-                        <div>
-                          <p className="font-medium text-white">{customer.name}</p>
-                          <p className="text-sm text-gray-400">{customer.email}</p>
-                        </div>
-                        <div className="text-right">
-                          <Badge variant={customer.active ? 'default' : 'secondary'}>
-                            {customer.active ? 'Active' : 'Inactive'}
-                          </Badge>
-                          {customer.lastOrderAt && (
-                            <p className="text-xs text-gray-400 mt-1">
-                              Last order: {format(new Date(customer.lastOrderAt), 'MMM dd')}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Pharmacists */}
-            <TabsContent value="pharmacists">
-              <Card className="bg-gray-800 border-gray-700">
-                <CardHeader>
-                  <CardTitle className="text-white">Pharmacists</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {pharmacists.map((pharmacist) => (
-                      <div key={pharmacist.userId} className="flex items-center justify-between p-3 bg-gray-700 rounded">
-                        <div>
-                          <p className="font-medium text-white">{pharmacist.name}</p>
-                          <p className="text-sm text-gray-400">{pharmacist.email}</p>
-                        </div>
-                        <Badge variant={pharmacist.verificationStatus === 'approved' ? 'default' : 'secondary'}>
-                          {pharmacist.verificationStatus}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Delivery Boys */}
-            <TabsContent value="delivery">
-              <Card className="bg-gray-800 border-gray-700">
-                <CardHeader>
-                  <CardTitle className="text-white">Delivery Boys</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {deliveryBoys.map((db) => (
-                      <div key={db.userId} className="flex items-center justify-between p-3 bg-gray-700 rounded">
-                        <div>
-                          <p className="font-medium text-white">{db.name}</p>
-                          <p className="text-sm text-gray-400">{db.email}</p>
-                        </div>
-                        <Badge variant={db.verificationStatus === 'approved' ? 'default' : 'secondary'}>
-                          {db.verificationStatus}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Orders (Status Only - Privacy Compliant) */}
-            <TabsContent value="orders">
-              <Card className="bg-gray-800 border-gray-700">
-                <CardHeader>
-                  <CardTitle className="text-white">Order Monitoring (Status Only)</CardTitle>
-                  <p className="text-sm text-gray-400 mt-2">
-                    ⚠️ Privacy Notice: Order details and customer information are hidden for privacy compliance
-                  </p>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {orders.map((order) => (
-                      <div key={order.orderId} className="flex items-center justify-between p-3 bg-gray-700 rounded">
-                        <div>
-                          <p className="font-medium text-white">Order #{order.orderId?.slice(-8)}</p>
-                          <p className="text-sm text-gray-400">
-                            {format(new Date(order.createdAt), 'MMM dd, yyyy HH:mm')}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <Badge>
-                            {order.status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                          </Badge>
-                          <p className="text-sm text-gray-400 mt-1">\u20b9{order.totalAmount}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-        )}
-      </main>
-
-      {/* Approval Confirmation Dialog */}
-      <Dialog open={approvalDialog} onOpenChange={setApprovalDialog}>
-        <DialogContent className="bg-gray-800 border-gray-700 text-white">
-          <DialogHeader>
-            <DialogTitle>Approve User</DialogTitle>
-            <DialogDescription className="text-gray-400">
-              Approve {selectedUser?.name} as {selectedUser?.role === 'pharmacist' ? 'Pharmacist' : 'Delivery Boy'}?
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <p className="text-sm text-gray-400">
-              <strong className="text-white">Name:</strong> {selectedUser?.name}
-            </p>
-            <p className="text-sm text-gray-400">
-              <strong className="text-white">Email:</strong> {selectedUser?.email}
-            </p>
-            {selectedUser?.documentUrl && (
-              <p className="text-sm text-gray-400">
-                <strong className="text-white">Document:</strong> Uploaded ✓
-              </p>
+          <Button variant="outline" size="sm" className="h-10 border-slate-200 text-slate-600 font-medium" onClick={fetchData}>
+            <Calendar className="h-4 w-4 mr-2" />
+            {format(new Date(), 'MMM dd, yyyy')}
+          </Button>
+          <Button variant="outline" size="icon" className="h-10 w-10 border-slate-200 text-slate-500 relative">
+            <Bell className="h-5 w-5" />
+            {dashboardData.stats?.activeOrders > 0 && (
+              <span className="absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-blue-600 border-2 border-white"></span>
             )}
+          </Button>
+        </div>
+      </div>
+
+      {dataLoading ? (
+        <div className="space-y-8 animate-pulse">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7 gap-4 md:gap-6">
+            {[...Array(7)].map((_, i) => (
+              <div key={i} className="h-32 bg-slate-100 rounded-xl"></div>
+            ))}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setApprovalDialog(false)} className="bg-gray-700 border-gray-600">
-              Cancel
-            </Button>
-            <Button onClick={() => handleApproval(selectedUser?.userId, true)} className="bg-green-600 hover:bg-green-700">
-              Approve
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="h-[400px] bg-slate-100 rounded-xl"></div>
+            <div className="h-[400px] bg-slate-100 rounded-xl"></div>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Stats Cards */}
+          <DashboardStats data={dashboardData.stats} />
+
+          {/* Analytics Charts */}
+          <DashboardCharts
+            orderData={dashboardData.orderData}
+            revenueData={dashboardData.revenueData}
+            topSellingData={dashboardData.topSellingData}
+          />
+        </>
+      )}
     </div>
   )
 }

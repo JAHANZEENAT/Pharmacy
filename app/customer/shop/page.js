@@ -14,7 +14,7 @@ import { Search, ShoppingCart, Pill, FileText, AlertCircle, Plus, Minus, Trash2,
 import Link from 'next/link'
 
 export default function CustomerShop() {
-  const { user, logout } = useAuth()
+  const { user, logout, loading: authLoading } = useAuth()
   const { cart, addToCart, removeFromCart, updateQuantity, getTotal, prescriptions, addPrescription } = useCart()
   const [medicines, setMedicines] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
@@ -23,19 +23,21 @@ export default function CustomerShop() {
   const router = useRouter()
 
   useEffect(() => {
+    if (authLoading) return
+
     if (!user || user.role !== 'customer') {
       router.push('/customer/login')
       return
     }
     fetchMedicines()
-  }, [user, router])
+  }, [user, authLoading, router])
 
   const fetchMedicines = async (search = '') => {
     try {
-      const url = search 
+      const url = search
         ? `/api/medicines?search=${encodeURIComponent(search)}`
         : '/api/medicines'
-      
+
       const response = await fetch(url)
       const data = await response.json()
       setMedicines(data.medicines || [])
@@ -59,12 +61,12 @@ export default function CustomerShop() {
   const handleProceedToCheckout = () => {
     // Check if any medicine requires prescription
     const requiresPrescription = cart.some(item => item.prescriptionRequired)
-    
+
     if (requiresPrescription && prescriptions.length === 0) {
       toast.error('Please upload prescription for medicines that require it')
       return
     }
-    
+
     router.push('/customer/checkout')
   }
 
@@ -180,8 +182,8 @@ export default function CustomerShop() {
                   </div>
                 </CardContent>
                 <CardFooter>
-                  <Button 
-                    className="w-full" 
+                  <Button
+                    className="w-full"
                     onClick={() => handleAddToCart(medicine)}
                     disabled={medicine.stock === 0}
                   >
@@ -282,7 +284,7 @@ export default function CustomerShop() {
             <Button variant="outline" onClick={() => setCartOpen(false)}>
               Continue Shopping
             </Button>
-            <Button 
+            <Button
               onClick={handleProceedToCheckout}
               disabled={cart.length === 0}
             >

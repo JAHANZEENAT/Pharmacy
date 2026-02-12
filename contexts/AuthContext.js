@@ -14,31 +14,33 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     // Check for existing session
-    const token = localStorage.getItem('token')
-    const userData = localStorage.getItem('user')
-    
+    const token = sessionStorage.getItem('token')
+    const userData = sessionStorage.getItem('user')
+
     if (token && userData) {
       setUser(JSON.parse(userData))
     }
-    
+
     setLoading(false)
   }, [])
 
   const login = (token, userData) => {
-    localStorage.setItem('token', token)
-    localStorage.setItem('user', JSON.stringify(userData))
+    console.log('[AUTH] Logging in user:', userData.email)
+    sessionStorage.setItem('token', token)
+    sessionStorage.setItem('user', JSON.stringify(userData))
     setUser(userData)
   }
 
   const logout = () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
+    console.log('[AUTH] Logging out')
+    sessionStorage.removeItem('token')
+    sessionStorage.removeItem('user')
     setUser(null)
     router.push('/')
   }
 
   const getToken = () => {
-    return localStorage.getItem('token')
+    return sessionStorage.getItem('token')
   }
 
   return (

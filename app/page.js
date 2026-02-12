@@ -9,10 +9,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ShoppingBag, Truck, Building2, Shield, Clock, BadgeCheck } from 'lucide-react'
 
 const Home = () => {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
+    if (loading) return
+
     // Redirect to appropriate dashboard if logged in
     if (user) {
       switch (user.role) {
@@ -30,7 +32,7 @@ const Home = () => {
           break
       }
     }
-  }, [user, router])
+  }, [user, loading, router])
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
@@ -69,9 +71,16 @@ const Home = () => {
                 Start Shopping
               </Button>
             </Link>
-            <Link href="/operator/register">
-              <Button size="lg" variant="outline">
-                Join as Operator
+            <Link href="/pharmacy/register">
+              <Button size="lg" variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50">
+                <Building2 className="mr-2 h-5 w-5" />
+                Join as Pharmacy
+              </Button>
+            </Link>
+            <Link href="/delivery/register">
+              <Button size="lg" variant="outline" className="border-green-600 text-green-600 hover:bg-green-50">
+                <Truck className="mr-2 h-5 w-5" />
+                Join as Delivery
               </Button>
             </Link>
           </div>
@@ -164,7 +173,7 @@ const Home = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Link href="/operator/register">
+              <Link href="/pharmacy/register">
                 <Button className="w-full">Register Pharmacy</Button>
               </Link>
             </CardContent>
@@ -179,7 +188,7 @@ const Home = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Link href="/operator/register">
+              <Link href="/delivery/register">
                 <Button className="w-full" variant="outline">Join as Delivery Partner</Button>
               </Link>
             </CardContent>
@@ -188,10 +197,33 @@ const Home = () => {
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-white py-8">
-        <div className="container mx-auto px-4 text-center">
-          <p className="text-gray-400">© 2025 PharmaFlow. All rights reserved.</p>
-          <p className="text-sm text-gray-500 mt-2">Your health, our priority. Licensed pharmacy management system.</p>
+      <footer className="bg-gray-900 text-white py-12">
+        <div className="container mx-auto px-4">
+          <div className="grid md:grid-cols-3 gap-8 text-center md:text-left mb-8">
+            <div>
+              <h4 className="font-bold text-lg mb-4">PharmaFlow</h4>
+              <p className="text-gray-400 text-sm">Your trusted partner for healthcare and medicine delivery. Licensed and certified pharmacy network.</p>
+            </div>
+            <div>
+              <h4 className="font-bold text-lg mb-4">Quick Links</h4>
+              <ul className="text-gray-400 text-sm space-y-2">
+                <li><Link href="/customer/register" className="hover:text-blue-400">Join as Customer</Link></li>
+                <li><Link href="/pharmacy/register" className="hover:text-blue-400">Partner with Us</Link></li>
+                <li><Link href="/delivery/register" className="hover:text-blue-400">Drive with Us</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-bold text-lg mb-4">Portal Access</h4>
+              <div className="flex flex-col space-y-2 text-sm text-gray-400">
+                <Link href="/customer/login" className="hover:text-blue-400">Customer Portal</Link>
+                <Link href="/operator/login" className="hover:text-blue-400">Operator Portal</Link>
+                <Link href="/admin/login" className="hover:text-slate-500 text-xs mt-4">System Administration</Link>
+              </div>
+            </div>
+          </div>
+          <div className="border-t border-gray-800 pt-8 text-center">
+            <p className="text-gray-500 text-xs">© 2025 PharmaFlow. All rights reserved.</p>
+          </div>
         </div>
       </footer>
     </div>

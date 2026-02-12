@@ -14,7 +14,7 @@ import { Shield, Truck, MapPin, LogOut, User, Package, CheckCircle, Navigation }
 import { format } from 'date-fns'
 
 export default function DeliveryDashboard() {
-  const { user, logout, getToken } = useAuth()
+  const { user, logout, getToken, loading: authLoading } = useAuth()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedOrder, setSelectedOrder] = useState(null)
@@ -23,12 +23,14 @@ export default function DeliveryDashboard() {
   const router = useRouter()
 
   useEffect(() => {
+    if (authLoading) return
+
     if (!user || user.role !== 'delivery_boy') {
       router.push('/operator/login')
       return
     }
     fetchOrders()
-  }, [user, router])
+  }, [user, authLoading, router])
 
   const fetchOrders = async () => {
     try {
@@ -75,7 +77,13 @@ export default function DeliveryDashboard() {
     }
   }
 
-  if (!user) return null
+  if (authLoading || !user) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+      </div>
+    )
+  }
 
   const activeDeliveries = orders.filter(o => o.status === 'out_for_delivery')
   const completedDeliveries = orders.filter(o => o.status === 'delivered')

@@ -23,6 +23,7 @@ export default function AdminLogin() {
     e.preventDefault()
     setLoading(true)
 
+    console.log('[LOGIN] Admin login attempt started')
     try {
       const response = await fetch('/api/auth/admin/login', {
         method: 'POST',
@@ -30,12 +31,21 @@ export default function AdminLogin() {
         body: JSON.stringify({ email, password })
       })
 
+      console.log(`[LOGIN] Admin API responded: ${response.status}`)
       const data = await response.json()
+      console.log('[LOGIN] Admin data parsed:', data.success ? 'Success' : 'Failed')
 
       if (data.success) {
+        console.log('[LOGIN] Success! Storing session and redirecting...')
         login(data.token, data.user)
         toast.success('Admin login successful!')
-        router.push('/admin/dashboard')
+
+        // Use a small delay to ensure state propagates before navigation
+        setTimeout(() => {
+          console.log('[LOGIN] Navigating to dashboard...')
+          // Force a hard navigation to avoid router state issues
+          window.location.href = '/admin/dashboard'
+        }, 100)
       } else {
         toast.error(data.error || 'Invalid credentials')
       }

@@ -1,3 +1,4 @@
+// Forced rebuild for main-app.js 404
 const nextConfig = {
   output: 'standalone',
   images: {

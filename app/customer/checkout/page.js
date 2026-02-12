@@ -16,10 +16,10 @@ import { Upload, CreditCard, Smartphone, Banknote, FileText, AlertCircle, Shoppi
 import Link from 'next/link'
 
 export default function CustomerCheckout() {
-  const { user, getToken } = useAuth()
+  const { user, getToken, loading: authLoading } = useAuth()
   const { cart, prescriptions, clearCart, addPrescription, removePrescription } = useCart()
   const router = useRouter()
-  const [loading, setLoading] = useState(false)
+  const [dataLoading, setDataLoading] = useState(false)
   const [address, setAddress] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('cod')
   const [uploadedFiles, setUploadedFiles] = useState([])
@@ -28,6 +28,8 @@ export default function CustomerCheckout() {
   const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
 
   useEffect(() => {
+    if (authLoading) return
+
     if (!user || user.role !== 'customer') {
       router.push('/customer/login')
       return
@@ -36,7 +38,7 @@ export default function CustomerCheckout() {
       router.push('/customer/shop')
       return
     }
-  }, [user, cart, router])
+  }, [user, authLoading, cart, router])
 
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files)
@@ -61,7 +63,7 @@ export default function CustomerCheckout() {
       return
     }
 
-    setLoading(true)
+    setDataLoading(true)
 
     try {
       const token = getToken()
@@ -98,11 +100,17 @@ export default function CustomerCheckout() {
     } catch (error) {
       toast.error('An error occurred. Please try again.')
     } finally {
-      setLoading(false)
+      setDataLoading(false)
     }
   }
 
-  if (!user || cart.length === 0) return null
+  if (authLoading || !user || cart.length === 0) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -290,9 +298,9 @@ export default function CustomerCheckout() {
                   className="w-full"
                   size="lg"
                   onClick={handlePlaceOrder}
-                  disabled={loading || !address.trim() || (requiresPrescription && uploadedFiles.length === 0)}
+                  disabled={dataLoading || !address.trim() || (requiresPrescription && uploadedFiles.length === 0)}
                 >
-                  {loading ? 'Placing Order...' : 'Place Order'}
+                  {dataLoading ? 'Placing Order...' : 'Place Order'}
                 </Button>
 
                 <p className="text-xs text-center text-gray-500">

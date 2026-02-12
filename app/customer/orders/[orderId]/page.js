@@ -14,12 +14,14 @@ import { format } from 'date-fns'
 export default function OrderDetail() {
   const params = useParams()
   const orderId = params?.orderId
-  const { user, getToken } = useAuth()
+  const { user, getToken, loading: authLoading } = useAuth()
   const [order, setOrder] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [dataLoading, setDataLoading] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
+    if (authLoading) return
+
     if (!user || user.role !== 'customer') {
       router.push('/customer/login')
       return
@@ -27,7 +29,7 @@ export default function OrderDetail() {
     if (orderId) {
       fetchOrder()
     }
-  }, [user, orderId, router])
+  }, [user, authLoading, orderId, router])
 
   const fetchOrder = async () => {
     try {
@@ -42,7 +44,7 @@ export default function OrderDetail() {
     } catch (error) {
       console.error('Failed to fetch order:', error)
     } finally {
-      setLoading(false)
+      setDataLoading(false)
     }
   }
 
@@ -62,7 +64,7 @@ export default function OrderDetail() {
     return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
   }
 
-  if (!user || loading) {
+  if (authLoading || !user || (!order && dataLoading)) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
